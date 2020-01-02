@@ -249,4 +249,51 @@ mod test {
         assert_eq!(primitive_result.y, gadget_result.y.value.unwrap());
         assert!(cs.is_satisfied());
     }
+
+    #[test]
+    fn commitment_combination_test() {
+
+        #[derive(Clone, PartialEq, Eq, Hash)]
+        pub(super) struct Window;
+
+        impl PedersenWindow for Window {
+            const WINDOW_SIZE: usize = 8; // Should be no less than 8 , for `bytes_to_bits` in `commit`->`evalute` func will be always be 8*N (N as an integer bigger than 0)
+            const NUM_WINDOWS: usize = 8;
+        }
+
+        let input_1 = [51u8, 5];
+
+        let rng = &mut thread_rng();
+
+        let randomness = PedersenRandomness(Fr::rand(rng));
+
+        let parameters = PedersenCommitment::<JubJub, Window>::setup(rng).unwrap();
+        let primitive_result =
+            PedersenCommitment::<JubJub, Window>::commit(&parameters, &input_1, &randomness).unwrap();
+        println!("primitive_result:{:?}, primitive_result + &JubJub::zero(): {:?}", primitive_result, primitive_result + &JubJub::zero());
+        assert_eq!(primitive_result, primitive_result + &JubJub::zero());
+        assert_eq!(parameters.generators[0][1], parameters.generators[0][0] * &Fr::from(2 as u64));
+        //assert_eq!(primitive_result, parameters.generators[0][0] * &Fr::from(2 as u64));
+
+        let input_2 = [5u8, 11];
+        let randomness_2 = PedersenRandomness(Fr::rand(rng));
+        let primitive_result_2 =
+            PedersenCommitment::<JubJub, Window>::commit(&parameters, &input_2, &randomness_2).unwrap();
+
+        let a_1 = 4u8;
+        let a_2 = 2u8;
+        //let randomness_3 = PedersenRandomness(randomness.0 + &randomness_2.0);
+        let randomness_3 = PedersenRandomness(randomness.0 * &Fr::from(a_1 as u64) + &(randomness_2.0 * &Fr::from(a_2 as u64)));
+        //let input_3 = [214u8, 42]; //a_1*i1+a_2*i2=1*5+2*7=19
+        let input_3: Vec<u8>= input_1.iter().zip(input_2.iter()).map(|(i1,i2)| a_1*i1+a_2*i2).collect();
+        let primitive_result_3 =
+            PedersenCommitment::<JubJub, Window>::commit(&parameters, &input_3, &randomness_3).unwrap();
+        println!("primitive_result:{:?}, a1:{:?}, primitive_result_2:{:?}, a_2:{:?}", primitive_result, a_1, primitive_result_2, a_2);
+        //assert_eq!(primitive_result * &Fr::from(a_1 as u64) + &(primitive_result_2 * &Fr::from(a_2 as u64)), primitive_result_3);
+        let primitive_expected = (primitive_result * &Fr::from(a_1 as u64) + &(primitive_result_2 * &Fr::from(a_2 as u64))).into_affine();
+        let primitive_direct = primitive_result_3.into_affine();
+        assert_eq!(primitive_direct.x, primitive_expected.x);
+        assert_eq!(primitive_direct.y, primitive_expected.y);
+    }
+
 }
